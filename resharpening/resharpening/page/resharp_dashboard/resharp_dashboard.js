@@ -1766,60 +1766,15 @@ function render_dashboard($main, page) {
                 جاري التحديث...
             `);
 
-
-            frappe.call({
-
-                method:
-                    "resharpening.api.dashboard.get_resharpening_orders",
-
-                args: {
-
-                    supplier:
-                        page.current_filters.supplier,
-
-                    status:
-                        page.current_filters.status,
-
-                    from_date:
-                        page.current_filters.from_date,
-
-                    to_date:
-                        page.current_filters.to_date,
-
-                    page:
-                        page.current_page
-                },
-
-                callback: function () {
-
-                    load_resharpening_orders(
-                        $main,
-                        page,
-                        page.current_page
-                    );
-                },
-
-                error: function () {
-
-                    frappe.msgprint(
-                        "حدث خطأ أثناء تحديث لوحة المتابعة."
-                    );
-
-                },
-
-                always: function () {
-
-                    $button.prop(
-                        "disabled",
-                        false
-                    );
-
-                    $button.html(
-                        original_html
-                    );
+            load_resharpening_orders(
+                $main,
+                page,
+                page.current_page,
+                function () {
+                    $button.prop("disabled", false);
+                    $button.html(original_html);
                 }
-
-            });
+            );
 
         }
     );
@@ -2076,7 +2031,8 @@ function reload_from_first_page(
 function load_resharpening_orders(
     $main,
     page,
-    requested_page
+    requested_page,
+    callback_fn
 ) {
 
     page.current_page =
@@ -2172,6 +2128,12 @@ function load_resharpening_orders(
                 </div>
 
             `);
+        },
+
+        always: function () {
+            if (typeof callback_fn === "function") {
+                callback_fn();
+            }
         }
 
     });
@@ -3710,6 +3672,11 @@ function toggle_order_details(
                 return;
             }
 
+
+            const cache_keys = Object.keys(page.order_details_cache);
+            if (cache_keys.length >= 50) {
+                delete page.order_details_cache[cache_keys[0]];
+            }
 
             page.order_details_cache[
                 purchase_receipt

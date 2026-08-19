@@ -7,3 +7,4 @@
 resharpening.patches.v1_0.add_resharpening_note_custom_field
 resharpening.patches.v1_0.add_sales_invoice_pr_field
 resharpening.patches.v1_0.add_resharp_return_reason_field
+resharpening.patches.v1_0.add_resharpening_performance_indexes

@@ -42,22 +42,7 @@ def create_resharpening_transfer(purchase_receipt):
             "This Purchase Receipt is already closed."
         )
 
-    # ------------------------------------------------------------------
-    # Prevent duplicate Office -> Manufacturing transfer
-    # ------------------------------------------------------------------
 
-    existing = frappe.db.exists(
-        "Stock Entry",
-        {
-            "stock_entry_type": OFFICE_TO_MANUFACTURING,
-            "docstatus": ["!=", 2],
-        },
-    )
-
-    # We don't use the above check yet because the Purchase Receipt
-    # reference is stored in Stock Entry Detail and not the parent.
-    #
-    # A proper item-level duplicate check will be added below.
 
     # ------------------------------------------------------------------
     # Check whether this Purchase Receipt was already transferred

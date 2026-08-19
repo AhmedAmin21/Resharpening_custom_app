@@ -9,10 +9,19 @@ from resharpening.utils.stock_entry_types import (
 PAGE_SIZE = 25
 
 
+_NOTE_FIELD_VERIFIED = False
+_SINV_FIELD_VERIFIED = False
+
+
 def ensure_custom_note_field():
     """
     Ensure custom_resharpening_note field exists on Purchase Receipt.
+    Cached after first verification.
     """
+    global _NOTE_FIELD_VERIFIED
+    if _NOTE_FIELD_VERIFIED:
+        return
+
     if not frappe.db.has_column("Purchase Receipt", "custom_resharpening_note"):
         from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
         create_custom_fields({
@@ -26,12 +35,18 @@ def ensure_custom_note_field():
                 }
             ]
         })
+    _NOTE_FIELD_VERIFIED = True
 
 
 def ensure_sales_invoice_pr_field():
     """
     Ensure custom_resharpening_purchase_receipt field exists on Sales Invoice.
+    Cached after first verification.
     """
+    global _SINV_FIELD_VERIFIED
+    if _SINV_FIELD_VERIFIED:
+        return
+
     if not frappe.db.has_column("Sales Invoice", "custom_resharpening_purchase_receipt"):
         from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
         create_custom_fields({
@@ -48,6 +63,7 @@ def ensure_sales_invoice_pr_field():
                 }
             ]
         })
+    _SINV_FIELD_VERIFIED = True
 
 
 # =============================================================
@@ -544,45 +560,14 @@ def get_resharpening_orders(
 
 
     # ---------------------------------------------------------
-    # Total count
-    # ---------------------------------------------------------
-
-    count_query = f"""
-
-        SELECT COUNT(*)
-
-        FROM (
-
-            {filtered_query}
-
-        ) AS counted_orders
-
-    """
-
-
-    total_count = frappe.db.sql(
-
-        count_query,
-
-        filtered_values,
-
-    )[0][0]
-
-
-    # ---------------------------------------------------------
-    # Status counts
+    # Status counts & Total count (Single query execution)
     # ---------------------------------------------------------
 
     status_counts_rows = frappe.db.sql(
-
         f"""
-
             SELECT
-
                 status,
-
                 COUNT(*) AS count,
-
                 COALESCE(
                     SUM(
                         CASE
@@ -591,72 +576,51 @@ def get_resharpening_orders(
                         END
                     ), 0
                 ) AS total_qty
-
-
             FROM (
-
                 {filtered_query}
-
             ) AS status_orders
-
-
             GROUP BY
-
                 status
-
         """,
-
         filtered_values,
-
         as_dict=True,
-
     )
 
+    total_count = sum(row.count for row in status_counts_rows)
 
     status_counts = {
-
         "Awaiting Manufacturing": {
             "count": 0,
             "total_qty": 0,
         },
-
         "In Manufacturing": {
             "count": 0,
             "total_qty": 0,
         },
-
         "Partially Ready": {
             "count": 0,
             "total_qty": 0,
         },
-
         "Ready / Partially Returned": {
             "count": 0,
             "total_qty": 0,
         },
-
         "Ready": {
             "count": 0,
             "total_qty": 0,
         },
-
         "Closed": {
             "count": 0,
             "total_qty": 0,
         },
-
         "Invoiced": {
             "count": 0,
             "total_qty": 0,
         },
-
     }
 
-
     for row in status_counts_rows:
-
         if row.status in status_counts:
-
             status_counts[row.status] = {
                 "count": row.count,
                 "total_qty": row.total_qty,
@@ -918,147 +882,63 @@ def close_resharpening_order(
 
 
     # ---------------------------------------------------------
-    # Calculate current quantities
+    # Calculate current quantities (Single consolidated query)
     # ---------------------------------------------------------
 
-    received = frappe.db.sql(
-
+    qty_row = frappe.db.sql(
         """
         SELECT
+            (
+                SELECT COALESCE(SUM(qty), 0)
+                FROM `tabPurchase Receipt Item`
+                WHERE parent = %(pr)s
+            ) AS received,
 
-            COALESCE(
-                SUM(qty),
-                0
-            ) AS qty
+            (
+                SELECT COALESCE(SUM(sed.qty), 0)
+                FROM `tabStock Entry Detail` sed
+                INNER JOIN `tabStock Entry` se
+                    ON se.name = sed.parent
+                WHERE
+                    se.stock_entry_type = %(sent_type)s
+                    AND se.docstatus = 1
+                    AND sed.custom_purchase_receipt = %(pr)s
+            ) AS sent,
 
-        FROM `tabPurchase Receipt Item`
+            (
+                SELECT COALESCE(SUM(sed.qty), 0)
+                FROM `tabStock Entry Detail` sed
+                INNER JOIN `tabStock Entry` se
+                    ON se.name = sed.parent
+                WHERE
+                    se.stock_entry_type = %(ready_type)s
+                    AND se.docstatus = 1
+                    AND sed.custom_purchase_receipt = %(pr)s
+            ) AS ready,
 
-        WHERE parent = %s
-
+            (
+                SELECT COALESCE(ABS(SUM(pri.qty)), 0)
+                FROM `tabPurchase Receipt` return_pr
+                INNER JOIN `tabPurchase Receipt Item` pri
+                    ON pri.parent = return_pr.name
+                WHERE
+                    return_pr.is_return = 1
+                    AND return_pr.docstatus = 1
+                    AND return_pr.return_against = %(pr)s
+            ) AS returned
         """,
-
-        purchase_receipt,
-
+        {
+            "pr": purchase_receipt,
+            "sent_type": OFFICE_TO_MANUFACTURING,
+            "ready_type": MANUFACTURING_TO_READY,
+        },
         as_dict=True,
+    )[0]
 
-    )[0].qty or 0
-
-
-    sent = frappe.db.sql(
-
-        """
-        SELECT
-
-            COALESCE(
-                SUM(sed.qty),
-                0
-            ) AS qty
-
-        FROM `tabStock Entry Detail` sed
-
-
-        INNER JOIN `tabStock Entry` se
-
-            ON se.name = sed.parent
-
-
-        WHERE
-
-            se.stock_entry_type = %s
-
-            AND se.docstatus = 1
-
-            AND sed.custom_purchase_receipt = %s
-
-        """,
-
-        (
-
-            OFFICE_TO_MANUFACTURING,
-
-            purchase_receipt,
-
-        ),
-
-        as_dict=True,
-
-    )[0].qty or 0
-
-
-    ready = frappe.db.sql(
-
-        """
-        SELECT
-
-            COALESCE(
-                SUM(sed.qty),
-                0
-            ) AS qty
-
-        FROM `tabStock Entry Detail` sed
-
-
-        INNER JOIN `tabStock Entry` se
-
-            ON se.name = sed.parent
-
-
-        WHERE
-
-            se.stock_entry_type = %s
-
-            AND se.docstatus = 1
-
-            AND sed.custom_purchase_receipt = %s
-
-        """,
-
-        (
-
-            MANUFACTURING_TO_READY,
-
-            purchase_receipt,
-
-        ),
-
-        as_dict=True,
-
-    )[0].qty or 0
-
-
-    returned = frappe.db.sql(
-
-        """
-        SELECT
-
-            COALESCE(
-                ABS(SUM(pri.qty)),
-                0
-            ) AS qty
-
-        FROM `tabPurchase Receipt` return_pr
-
-
-        INNER JOIN `tabPurchase Receipt Item` pri
-
-            ON pri.parent = return_pr.name
-
-
-        WHERE
-
-            return_pr.is_return = 1
-
-            AND return_pr.docstatus = 1
-
-            AND return_pr.return_against = %s
-
-        """,
-
-        purchase_receipt,
-
-        as_dict=True,
-
-    )[0].qty or 0
+    received = qty_row.received or 0
+    sent = qty_row.sent or 0
+    ready = qty_row.ready or 0
+    returned = qty_row.returned or 0
 
 
     # ---------------------------------------------------------
@@ -1880,23 +1760,29 @@ def create_resharpening_sales_invoice(
     # Build invoice items (only items with ready_qty > 0)
     # ---------------------------------------------------------
 
-    invoice_items = []
-
-    for item in items:
-        ready_qty = ready_map.get(
-            item.item_code,
-            0,
+    ready_items = [item for item in items if ready_map.get(item.item_code, 0) > 0]
+    if not ready_items:
+        frappe.throw(
+            "لا توجد أصناف جاهزة لإنشاء فاتورة مبيعات."
         )
 
-        if ready_qty <= 0:
-            continue
+    item_codes_tuple = tuple(set(item.item_code for item in ready_items))
+    items_meta_rows = frappe.db.sql(
+        """
+        SELECT name, item_name, stock_uom, description
+        FROM `tabItem`
+        WHERE name IN %s
+        """,
+        (item_codes_tuple,),
+        as_dict=True,
+    )
+    items_meta_map = {row.name: row for row in items_meta_rows}
 
-        item_doc = frappe.db.get_value(
-            "Item",
-            item.item_code,
-            ["item_name", "stock_uom", "description"],
-            as_dict=True,
-        ) or {}
+    invoice_items = []
+
+    for item in ready_items:
+        ready_qty = ready_map.get(item.item_code, 0)
+        item_doc = items_meta_map.get(item.item_code) or {}
 
         item_name = item.item_name or item_doc.get("item_name") or item.item_code
         uom = item.uom or item_doc.get("stock_uom") or "Nos"

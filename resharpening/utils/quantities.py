@@ -128,19 +128,12 @@ def get_available_quantities(purchase_receipt):
         | set(purchase_returned_quantities)
     )
 
+    positive_items = []
+
     for item_code in item_codes:
-
-        transferred_qty = transferred_quantities.get(
-            item_code, 0
-        )
-
-        returned_qty = returned_quantities.get(
-            item_code, 0
-        )
-
-        purchase_returned_qty = purchase_returned_quantities.get(
-            item_code, 0
-        )
+        transferred_qty = transferred_quantities.get(item_code, 0)
+        returned_qty = returned_quantities.get(item_code, 0)
+        purchase_returned_qty = purchase_returned_quantities.get(item_code, 0)
 
         available_qty = (
             transferred_qty
@@ -149,27 +142,33 @@ def get_available_quantities(purchase_receipt):
         )
 
         if available_qty > 0:
-
-            item_name = frappe.db.get_value(
-                "Item",
-                item_code,
-                "item_name"
-            )
-
-            stock_uom = frappe.db.get_value(
-                "Item",
-                item_code,
-                "stock_uom"
-            )
-
-            available.append({
+            positive_items.append({
                 "item_code": item_code,
-                "item_name": item_name,
                 "transferred_qty": transferred_qty,
                 "returned_qty": returned_qty,
                 "purchase_returned_qty": purchase_returned_qty,
                 "available_qty": available_qty,
-                "stock_uom": stock_uom,
             })
+
+    if not positive_items:
+        return []
+
+    item_codes_list = [item["item_code"] for item in positive_items]
+    items_meta = frappe.db.sql(
+        """
+        SELECT name, item_name, stock_uom
+        FROM `tabItem`
+        WHERE name IN %s
+        """,
+        (tuple(item_codes_list),),
+        as_dict=True,
+    )
+    items_meta_map = {row.name: row for row in items_meta}
+
+    for item in positive_items:
+        meta = items_meta_map.get(item["item_code"]) or {}
+        item["item_name"] = meta.get("item_name") or item["item_code"]
+        item["stock_uom"] = meta.get("stock_uom") or "Nos"
+        available.append(item)
 
     return available

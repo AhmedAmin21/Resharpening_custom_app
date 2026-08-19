@@ -105,59 +105,95 @@ def get_resharpening_order_progress(purchase_receipt):
         OFFICE_TO_MANUFACTURING,
         MANUFACTURING_TO_READY,
     )
-    
-    # 1. Received quantity (original PR items)
-    received = frappe.db.sql("""
-        SELECT COALESCE(SUM(qty), 0) AS qty
-        FROM `tabPurchase Receipt Item`
-        WHERE parent = %s
-    """, purchase_receipt, as_dict=True)[0].qty or 0
-    
-    # 2. Sent to Factory (Office -> Manufacturing)
-    sent = frappe.db.sql("""
-        SELECT COALESCE(SUM(sed.qty), 0) AS qty
-        FROM `tabStock Entry Detail` sed
-        INNER JOIN `tabStock Entry` se ON se.name = sed.parent
-        WHERE se.stock_entry_type = %s
-          AND se.docstatus = 1
-          AND sed.custom_purchase_receipt = %s
-    """, (OFFICE_TO_MANUFACTURING, purchase_receipt), as_dict=True)[0].qty or 0
-    
-    # 3. Ready in Office (Manufacturing -> Ready)
-    ready = frappe.db.sql("""
-        SELECT COALESCE(SUM(sed.qty), 0) AS qty
-        FROM `tabStock Entry Detail` sed
-        INNER JOIN `tabStock Entry` se ON se.name = sed.parent
-        WHERE se.stock_entry_type = %s
-          AND se.docstatus = 1
-          AND sed.custom_purchase_receipt = %s
-    """, (MANUFACTURING_TO_READY, purchase_receipt), as_dict=True)[0].qty or 0
-    
-    # 4. Returned to Supplier (Purchase Return)
-    returned = frappe.db.sql("""
-        SELECT COALESCE(ABS(SUM(pri.qty)), 0) AS qty
-        FROM `tabPurchase Receipt` return_pr
-        INNER JOIN `tabPurchase Receipt Item` pri ON pri.parent = return_pr.name
-        WHERE return_pr.is_return = 1
-          AND return_pr.docstatus = 1
-          AND return_pr.return_against = %s
-    """, purchase_receipt, as_dict=True)[0].qty or 0
-    
-    # 5. Return count (number of Factory -> Office Stock Entries)
-    return_count_res = frappe.db.sql("""
-        SELECT COUNT(DISTINCT se.name) AS count
-        FROM `tabStock Entry Detail` sed
-        INNER JOIN `tabStock Entry` se ON se.name = sed.parent
-        WHERE se.stock_entry_type = %s
-          AND se.docstatus = 1
-          AND sed.custom_purchase_receipt = %s
-    """, (MANUFACTURING_TO_READY, purchase_receipt), as_dict=True)
-    return_count = return_count_res[0].count if return_count_res else 0
-    
-    # Check if PR itself is closed
-    pr_status = frappe.db.get_value("Purchase Receipt", purchase_receipt, "status")
-    
-    # 6. Operational Status
+
+    # Consolidated single query for all order progress metrics
+    res = frappe.db.sql(
+        """
+        SELECT
+            (
+                SELECT COALESCE(SUM(qty), 0)
+                FROM `tabPurchase Receipt Item`
+                WHERE parent = %(pr)s
+            ) AS received,
+
+            (
+                SELECT COALESCE(SUM(sed.qty), 0)
+                FROM `tabStock Entry Detail` sed
+                INNER JOIN `tabStock Entry` se
+                    ON se.name = sed.parent
+                WHERE
+                    se.stock_entry_type = %(sent_type)s
+                    AND se.docstatus = 1
+                    AND sed.custom_purchase_receipt = %(pr)s
+            ) AS sent,
+
+            (
+                SELECT COALESCE(SUM(sed.qty), 0)
+                FROM `tabStock Entry Detail` sed
+                INNER JOIN `tabStock Entry` se
+                    ON se.name = sed.parent
+                WHERE
+                    se.stock_entry_type = %(ready_type)s
+                    AND se.docstatus = 1
+                    AND sed.custom_purchase_receipt = %(pr)s
+            ) AS ready,
+
+            (
+                SELECT COALESCE(ABS(SUM(pri.qty)), 0)
+                FROM `tabPurchase Receipt` return_pr
+                INNER JOIN `tabPurchase Receipt Item` pri
+                    ON pri.parent = return_pr.name
+                WHERE
+                    return_pr.is_return = 1
+                    AND return_pr.docstatus = 1
+                    AND return_pr.return_against = %(pr)s
+            ) AS returned,
+
+            (
+                SELECT COUNT(DISTINCT se.name)
+                FROM `tabStock Entry Detail` sed
+                INNER JOIN `tabStock Entry` se
+                    ON se.name = sed.parent
+                WHERE
+                    se.stock_entry_type = %(ready_type)s
+                    AND se.docstatus = 1
+                    AND sed.custom_purchase_receipt = %(pr)s
+            ) AS return_count,
+
+            (
+                SELECT status
+                FROM `tabPurchase Receipt`
+                WHERE name = %(pr)s
+            ) AS pr_status
+        """,
+        {
+            "pr": purchase_receipt,
+            "sent_type": OFFICE_TO_MANUFACTURING,
+            "ready_type": MANUFACTURING_TO_READY,
+        },
+        as_dict=True,
+    )
+
+    if not res:
+        return {
+            "received_qty": 0,
+            "sent_qty": 0,
+            "ready_qty": 0,
+            "returned_qty": 0,
+            "remaining_qty": 0,
+            "order_status": "",
+            "return_count": 0,
+        }
+
+    row = res[0]
+    received = row.received or 0
+    sent = row.sent or 0
+    ready = row.ready or 0
+    returned = row.returned or 0
+    return_count = row.return_count or 0
+    pr_status = row.pr_status or ""
+
+    # Operational Status
     if pr_status == "Closed":
         operational_status = "Closed"
     elif sent <= 0:
@@ -170,9 +206,9 @@ def get_resharpening_order_progress(purchase_receipt):
         operational_status = "Partially Ready"
     else:
         operational_status = "In Manufacturing"
-        
+
     remaining = max(received - ready - returned, 0)
-    
+
     def _clean_num(val):
         flt_val = frappe.utils.flt(val)
         return int(flt_val) if flt_val.is_integer() else flt_val
@@ -184,7 +220,7 @@ def get_resharpening_order_progress(purchase_receipt):
         "returned_qty": _clean_num(returned),
         "remaining_qty": _clean_num(remaining),
         "order_status": operational_status,
-        "return_count": return_count
+        "return_count": return_count,
     }
 
 def format_message(template, doc=None, items=None, **kwargs):
@@ -477,23 +513,27 @@ def send_pr_closed_whatsapp_notification(purchase_receipt):
     if not template:
         return
         
-    receipt = frappe.get_doc("Purchase Receipt", purchase_receipt)
-    if getattr(receipt, "custom_operation_type", None) != "Resharpening":
+    receipt = frappe.db.get_value(
+        "Purchase Receipt",
+        purchase_receipt,
+        ["name", "supplier", "custom_operation_type"],
+        as_dict=True,
+    )
+    if not receipt or receipt.get("custom_operation_type") != "Resharpening":
         return
-        
+
     phone = get_supplier_mobile(receipt.supplier)
     if not phone:
         return
-        
+
     supplier_name = frappe.db.get_value("Supplier", receipt.supplier, "supplier_name") or receipt.supplier
-    
+
     message = format_message(
-        template, 
-        doc=receipt, 
+        template,
         supplier_name=supplier_name,
         purchase_receipt=receipt.name
     )
-    
+
     log_id = create_whatsapp_log(event_type, event_ref, receipt.name, receipt.supplier, phone, message)
     frappe.enqueue(send_message, phone=phone, text=message, settings=settings, log_id=log_id)
 

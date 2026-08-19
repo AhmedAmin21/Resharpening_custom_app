@@ -45,6 +45,10 @@ def validate_resharpening_return(doc, method=None):
     # from the same Purchase Receipt + Item
     # inside this Stock Entry.
     requested_quantities = {}
+    pr_cache = {}
+    available_items_cache = {}
+    item_exists_cache = {}
+    pr_items_cache = {}
 
     for row in doc.items:
 
@@ -52,6 +56,10 @@ def validate_resharpening_return(doc, method=None):
             doc,
             row,
             requested_quantities,
+            pr_cache,
+            available_items_cache,
+            item_exists_cache,
+            pr_items_cache,
         )
 
 
@@ -59,6 +67,10 @@ def validate_row(
     doc,
     row,
     requested_quantities,
+    pr_cache=None,
+    available_items_cache=None,
+    item_exists_cache=None,
+    pr_items_cache=None,
 ):
     """
     Validate one Stock Entry Detail row.
@@ -88,18 +100,23 @@ def validate_row(
     # 3. Validate Purchase Receipt
     # ---------------------------------------------------------
 
-    purchase_receipt = frappe.db.get_value(
-        "Purchase Receipt",
-        row.custom_purchase_receipt,
-        [
-            "name",
-            "supplier",
-            "docstatus",
-            "custom_operation_type",
-            "status",
-        ],
-        as_dict=True,
-    )
+    if pr_cache is not None and row.custom_purchase_receipt in pr_cache:
+        purchase_receipt = pr_cache[row.custom_purchase_receipt]
+    else:
+        purchase_receipt = frappe.db.get_value(
+            "Purchase Receipt",
+            row.custom_purchase_receipt,
+            [
+                "name",
+                "supplier",
+                "docstatus",
+                "custom_operation_type",
+                "status",
+            ],
+            as_dict=True,
+        )
+        if pr_cache is not None:
+            pr_cache[row.custom_purchase_receipt] = purchase_receipt
 
     if not purchase_receipt:
         frappe.throw(
@@ -178,10 +195,12 @@ def validate_row(
             "Resharpening return row."
         )
 
-    item_exists = frappe.db.exists(
-        "Item",
-        row.item_code,
-    )
+    if item_exists_cache is not None and row.item_code in item_exists_cache:
+        item_exists = item_exists_cache[row.item_code]
+    else:
+        item_exists = frappe.db.exists("Item", row.item_code)
+        if item_exists_cache is not None:
+            item_exists_cache[row.item_code] = item_exists
 
     if not item_exists:
         frappe.throw(
@@ -192,13 +211,19 @@ def validate_row(
     # 10. Make sure item belongs to Purchase Receipt
     # ---------------------------------------------------------
 
-    item_in_receipt = frappe.db.exists(
-        "Purchase Receipt Item",
-        {
-            "parent": row.custom_purchase_receipt,
-            "item_code": row.item_code,
-        },
-    )
+    pr_item_key = (row.custom_purchase_receipt, row.item_code)
+    if pr_items_cache is not None and pr_item_key in pr_items_cache:
+        item_in_receipt = pr_items_cache[pr_item_key]
+    else:
+        item_in_receipt = frappe.db.exists(
+            "Purchase Receipt Item",
+            {
+                "parent": row.custom_purchase_receipt,
+                "item_code": row.item_code,
+            },
+        )
+        if pr_items_cache is not None:
+            pr_items_cache[pr_item_key] = item_in_receipt
 
     if not item_in_receipt:
         frappe.throw(
@@ -235,9 +260,14 @@ def validate_row(
     # 13. Get current available quantity
     # ---------------------------------------------------------
 
-    available_items = get_available_quantities(
-        row.custom_purchase_receipt
-    )
+    if available_items_cache is not None and row.custom_purchase_receipt in available_items_cache:
+        available_items = available_items_cache[row.custom_purchase_receipt]
+    else:
+        available_items = get_available_quantities(
+            row.custom_purchase_receipt
+        )
+        if available_items_cache is not None:
+            available_items_cache[row.custom_purchase_receipt] = available_items
 
     available_map = {
         item["item_code"]: item["available_qty"]
