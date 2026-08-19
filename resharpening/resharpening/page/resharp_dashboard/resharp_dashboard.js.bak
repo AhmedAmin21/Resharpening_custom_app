@@ -1,0 +1,762 @@
+frappe.pages["resharp-dashboard"].on_page_load = function (wrapper) {
+    const page = frappe.ui.make_app_page({
+        parent: wrapper,
+        title: "Resharpening Dashboard",
+        single_column: true
+    });
+
+    const $main = $(wrapper).find(".layout-main-section");
+
+    page.current_filters = {
+        supplier: null,
+        status: null
+    };
+
+    // Cache item details by Purchase Receipt
+    page.order_details_cache = {};
+
+    render_dashboard($main, page);
+    load_resharpening_orders($main, page);
+};
+
+
+function render_dashboard($main, page) {
+    $main.html(`
+        <div class="resharp-dashboard">
+
+            <div class="row" style="margin-bottom: 20px;">
+
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="text-muted">
+                                In Progress
+                            </div>
+
+                            <div
+                                class="resharp-count"
+                                data-status="In Progress"
+                                style="
+                                    font-size: 28px;
+                                    font-weight: 600;
+                                "
+                            >
+                                0
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="text-muted">
+                                Partially Ready
+                            </div>
+
+                            <div
+                                class="resharp-count"
+                                data-status="Partially Ready"
+                                style="
+                                    font-size: 28px;
+                                    font-weight: 600;
+                                "
+                            >
+                                0
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <div class="text-muted">
+                                Ready
+                            </div>
+
+                            <div
+                                class="resharp-count"
+                                data-status="Ready"
+                                style="
+                                    font-size: 28px;
+                                    font-weight: 600;
+                                "
+                            >
+                                0
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+
+            <div
+                class="resharp-filters"
+                style="
+                    display: flex;
+                    gap: 12px;
+                    margin-bottom: 20px;
+                    align-items: flex-end;
+                "
+            >
+
+                <div style="min-width: 250px;">
+                    <label class="control-label">
+                        Supplier
+                    </label>
+
+                    <div class="supplier-filter"></div>
+                </div>
+
+
+                <div style="min-width: 200px;">
+                    <label class="control-label">
+                        Status
+                    </label>
+
+                    <select class="form-control status-filter">
+
+                        <option value="">
+                            All Statuses
+                        </option>
+
+                        <option value="In Progress">
+                            In Progress
+                        </option>
+
+                        <option value="Partially Ready">
+                            Partially Ready
+                        </option>
+
+                        <option value="Ready">
+                            Ready
+                        </option>
+
+                    </select>
+                </div>
+
+
+                <button
+                    class="btn btn-default clear-filters"
+                    type="button"
+                >
+                    Clear
+                </button>
+
+            </div>
+
+
+            <div class="resharp-orders">
+                <div class="text-muted">
+                    Loading...
+                </div>
+            </div>
+
+        </div>
+    `);
+
+
+    // Supplier filter
+    page.supplier_control = frappe.ui.form.make_control({
+        parent: $main.find(".supplier-filter"),
+
+        df: {
+            fieldtype: "Link",
+            options: "Supplier",
+            fieldname: "supplier",
+            placeholder: "Select Supplier",
+
+            onchange: function () {
+
+                page.current_filters.supplier =
+                    page.supplier_control.get_value() || null;
+
+                load_resharpening_orders(
+                    $main,
+                    page
+                );
+            }
+        },
+
+        render_input: true
+    });
+
+    page.supplier_control.make();
+
+
+    // Status filter
+    $main.find(".status-filter").on(
+        "change",
+        function () {
+
+            page.current_filters.status =
+                $(this).val() || null;
+
+            load_resharpening_orders(
+                $main,
+                page
+            );
+        }
+    );
+
+
+    // Clear filters
+    $main.find(".clear-filters").on(
+        "click",
+        function () {
+
+            page.current_filters = {
+                supplier: null,
+                status: null
+            };
+
+            page.supplier_control.set_value("");
+
+            $main.find(".status-filter").val("");
+
+            load_resharpening_orders(
+                $main,
+                page
+            );
+        }
+    );
+}
+
+
+function load_resharpening_orders($main, page) {
+
+    $main.find(".resharp-orders").html(`
+        <div class="text-muted">
+            Loading...
+        </div>
+    `);
+
+
+    frappe.call({
+        method:
+            "resharpening.api.dashboard.get_resharpening_orders",
+
+        args: {
+            supplier:
+                page.current_filters.supplier,
+
+            status:
+                page.current_filters.status
+        },
+
+        callback: function (response) {
+
+            const orders =
+                response.message || [];
+
+            update_summary(
+                $main,
+                orders
+            );
+
+            render_orders(
+                $main,
+                page,
+                orders
+            );
+        },
+
+        error: function () {
+
+            $main.find(".resharp-orders").html(`
+                <div class="alert alert-danger">
+                    Failed to load resharpening orders.
+                </div>
+            `);
+        }
+    });
+}
+
+
+function update_summary($main, orders) {
+
+    const counts = {
+        "In Progress": 0,
+        "Partially Ready": 0,
+        "Ready": 0
+    };
+
+
+    orders.forEach(function (order) {
+
+        if (counts[order.status] !== undefined) {
+            counts[order.status]++;
+        }
+
+    });
+
+
+    $main.find(
+        '.resharp-count[data-status="In Progress"]'
+    ).text(
+        counts["In Progress"]
+    );
+
+
+    $main.find(
+        '.resharp-count[data-status="Partially Ready"]'
+    ).text(
+        counts["Partially Ready"]
+    );
+
+
+    $main.find(
+        '.resharp-count[data-status="Ready"]'
+    ).text(
+        counts["Ready"]
+    );
+}
+
+
+function render_orders($main, page, orders) {
+
+    const $container =
+        $main.find(".resharp-orders");
+
+
+    if (!orders.length) {
+
+        $container.html(`
+            <div class="text-muted">
+                No resharpening orders found.
+            </div>
+        `);
+
+        return;
+    }
+
+
+    let html = `
+        <div class="table-responsive">
+
+            <table class="table table-bordered">
+
+                <thead>
+
+                    <tr>
+                        <th style="width: 45px;"></th>
+                        <th>Supplier</th>
+                        <th>Purchase Receipt</th>
+                        <th>Date</th>
+                        <th>Received</th>
+                        <th>Not Sent</th>
+                        <th>In Manufacturing</th>
+                        <th>Ready</th>
+                        <th>Status</th>
+                    </tr>
+
+                </thead>
+
+                <tbody>
+    `;
+
+
+    orders.forEach(function (order) {
+
+        const receipt =
+            frappe.utils.escape_html(
+                order.purchase_receipt
+            );
+
+        html += `
+            <tr
+                class="resharp-order-row"
+                data-purchase-receipt="${receipt}"
+            >
+
+                <td class="text-center">
+                    <button
+                        type="button"
+                        class="btn btn-xs btn-default
+                               resharp-expand-btn"
+                        data-purchase-receipt="${receipt}"
+                        title="Show items"
+                    >
+                        ▶
+                    </button>
+                </td>
+
+
+                <td>
+                    ${frappe.utils.escape_html(
+                        order.supplier || ""
+                    )}
+                </td>
+
+
+                <td>
+                    ${receipt}
+                </td>
+
+
+                <td>
+                    ${frappe.datetime.str_to_user(
+                        order.receipt_date
+                    )}
+                </td>
+
+
+                <td>
+                    ${order.received || 0}
+                </td>
+
+
+                <td>
+                    ${order.not_sent || 0}
+                </td>
+
+
+                <td>
+                    ${order.in_manufacturing || 0}
+                </td>
+
+
+                <td>
+                    <strong>
+                        ${order.ready || 0}
+                    </strong>
+                </td>
+
+
+                <td>
+                    ${get_status_badge(
+                        order.status
+                    )}
+                </td>
+
+            </tr>
+
+
+            <tr
+                class="resharp-details-row"
+                data-details-for="${receipt}"
+                style="display: none;"
+            >
+                <td colspan="9">
+                    <div class="resharp-details-container">
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+
+    html += `
+                </tbody>
+
+            </table>
+
+        </div>
+    `;
+
+
+    $container.html(html);
+
+
+    $container.find(".resharp-expand-btn").on(
+        "click",
+        function (event) {
+
+            event.stopPropagation();
+
+            const purchase_receipt =
+                $(this).attr(
+                    "data-purchase-receipt"
+                );
+
+            toggle_order_details(
+                $container,
+                page,
+                purchase_receipt,
+                $(this)
+            );
+        }
+    );
+}
+
+
+function toggle_order_details(
+    $container,
+    page,
+    purchase_receipt,
+    $button
+) {
+
+    const $details_row =
+        $container.find(
+            `.resharp-details-row[data-details-for="${CSS.escape(
+                purchase_receipt
+            )}"]`
+        );
+
+
+    const is_visible =
+        $details_row.is(":visible");
+
+
+    if (is_visible) {
+
+        $details_row.hide();
+
+        $button.text("▶");
+
+        return;
+    }
+
+
+    $details_row.show();
+
+    $button.text("▼");
+
+
+    // Use cached data if available
+    if (
+        page.order_details_cache[
+            purchase_receipt
+        ]
+    ) {
+
+        render_order_details_row(
+            $details_row,
+            page.order_details_cache[
+                purchase_receipt
+            ]
+        );
+
+        return;
+    }
+
+
+    // First time opening this receipt
+    $details_row.find(
+        ".resharp-details-container"
+    ).html(`
+        <div class="text-muted">
+            Loading items...
+        </div>
+    `);
+
+
+    frappe.call({
+
+        method:
+            "resharpening.api.dashboard.get_resharpening_order_details",
+
+        args: {
+            purchase_receipt:
+                purchase_receipt
+        },
+
+        callback: function (response) {
+
+            const data =
+                response.message;
+
+            if (!data) {
+
+                $details_row.find(
+                    ".resharp-details-container"
+                ).html(`
+                    <div class="alert alert-danger">
+                        Unable to load order details.
+                    </div>
+                `);
+
+                return;
+            }
+
+
+            // Cache result
+            page.order_details_cache[
+                purchase_receipt
+            ] = data;
+
+
+            render_order_details_row(
+                $details_row,
+                data
+            );
+        },
+
+        error: function () {
+
+            $details_row.find(
+                ".resharp-details-container"
+            ).html(`
+                <div class="alert alert-danger">
+                    Failed to load order details.
+                </div>
+            `);
+        }
+    });
+}
+
+
+function render_order_details_row(
+    $details_row,
+    data
+) {
+
+    let html = `
+        <div style="
+            padding: 10px 15px 15px 15px;
+        ">
+
+            <div
+                style="
+                    margin-bottom: 12px;
+                    font-weight: 600;
+                "
+            >
+                Items
+            </div>
+
+
+            <div class="table-responsive">
+
+                <table
+                    class="table table-bordered table-sm"
+                    style="margin-bottom: 0;"
+                >
+
+                    <thead>
+
+                        <tr>
+                            <th>Item</th>
+                            <th>Received</th>
+                            <th>Not Sent</th>
+                            <th>In Manufacturing</th>
+                            <th>Ready</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+    `;
+
+
+    if (!data.items || !data.items.length) {
+
+        html += `
+            <tr>
+                <td
+                    colspan="5"
+                    class="text-muted text-center"
+                >
+                    No items found.
+                </td>
+            </tr>
+        `;
+    }
+
+
+    (data.items || []).forEach(function (item) {
+
+        html += `
+            <tr>
+
+                <td>
+
+                    <strong>
+                        ${frappe.utils.escape_html(
+                            item.item_code || ""
+                        )}
+                    </strong>
+
+                    ${
+                        item.item_name
+                            ? `
+                                <br>
+                                <span class="text-muted">
+                                    ${frappe.utils.escape_html(
+                                        item.item_name
+                                    )}
+                                </span>
+                              `
+                            : ""
+                    }
+
+                </td>
+
+
+                <td>
+                    ${item.received || 0}
+                </td>
+
+
+                <td>
+                    ${item.not_sent || 0}
+                </td>
+
+
+                <td>
+                    ${item.in_manufacturing || 0}
+                </td>
+
+
+                <td>
+                    <strong>
+                        ${item.ready || 0}
+                    </strong>
+                </td>
+
+            </tr>
+        `;
+    });
+
+
+    html += `
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+    `;
+
+
+    $details_row.find(
+        ".resharp-details-container"
+    ).html(html);
+}
+
+
+function get_status_badge(status) {
+
+    let css_class =
+        "badge-secondary";
+
+
+    if (status === "In Progress") {
+        css_class = "badge-warning";
+    }
+
+
+    if (status === "Partially Ready") {
+        css_class = "badge-info";
+    }
+
+
+    if (status === "Ready") {
+        css_class = "badge-success";
+    }
+
+
+    return `
+        <span class="badge ${css_class}">
+            ${frappe.utils.escape_html(
+                status || ""
+            )}
+        </span>
+    `;
+}

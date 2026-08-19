@@ -23,7 +23,29 @@ app_license = "mit"
 
 # Includes in <head>
 # ------------------
+app_include_css = "/assets/resharpening/css/resharpening.css"
+doctype_js = {
+    "Purchase Receipt": "public/js/purchase_receipt.js",
+ "Stock Entry": "public/js/stock_entry.js",
+}
 
+doc_events = {
+    "Stock Entry": {
+        "before_submit": [
+            "resharpening.stock_entry.validation.validate_resharpening_return"
+        ],
+        "on_submit": [
+            "resharpening.notifications.whatsapp.send_stock_entry_message"
+        ]
+    },
+    "Purchase Receipt": {
+        "on_submit": [
+            "resharpening.notifications.whatsapp.send_receipt_message"
+        ]
+    }
+}
+
+after_migrate = "resharpening.setup_whatsapp.setup"
 # include js, css files in header of desk.html
 # app_include_css = "/assets/resharpening/css/resharpening.css"
 # app_include_js = "/assets/resharpening/js/resharpening.js"

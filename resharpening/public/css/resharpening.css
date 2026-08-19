@@ -1,0 +1,22 @@
+/* =========================================================
+   Resharpening - Return Button
+   ========================================================= */
+
+.btn-resharpening-return {
+    background-color: #c85c5c !important;
+    border-color: #c85c5c !important;
+    color: #ffffff !important;
+    font-weight: 500;
+}
+
+.btn-resharpening-return:hover,
+.btn-resharpening-return:focus {
+    background-color: #b94d4d !important;
+    border-color: #b94d4d !important;
+    color: #ffffff !important;
+}
+
+.btn-resharpening-return:active {
+    background-color: #a94444 !important;
+    border-color: #a94444 !important;
+}
