@@ -161,6 +161,8 @@ def get_resharpening_orders(
 
             pr.supplier,
 
+            COALESCE(pr.supplier_name, pr.supplier) AS supplier_name,
+
             pr.posting_date AS receipt_date,
 
             pr.status AS purchase_receipt_status,
@@ -703,6 +705,8 @@ def get_resharpening_orders(
             "supplier":
                 row.supplier,
 
+            "supplier_name":
+                getattr(row, "supplier_name", None) or row.supplier,
 
             "purchase_receipt":
                 row.purchase_receipt,

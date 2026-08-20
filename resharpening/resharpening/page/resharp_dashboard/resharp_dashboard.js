@@ -2447,7 +2447,7 @@ function render_orders(
                     <td>
 
                         ${frappe.utils.escape_html(
-                            order.supplier || ""
+                            order.supplier_name || order.supplier || ""
                         )}
 
                     </td>

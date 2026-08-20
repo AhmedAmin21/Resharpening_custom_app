@@ -97,14 +97,19 @@ def create_resharpening_transfer(purchase_receipt):
         if remaining_qty <= 0:
             continue
 
+        conversion_factor = item.conversion_factor or 1
+        stock_uom = item.stock_uom or item.uom
+        transfer_qty = remaining_qty * conversion_factor
+
         stock_entry.append(
             "items",
             {
                 "item_code": item.item_code,
                 "qty": remaining_qty,
                 "uom": item.uom,
-                "stock_uom": item.stock_uom,
-                "conversion_factor": item.conversion_factor or 1,
+                "stock_uom": stock_uom,
+                "conversion_factor": conversion_factor,
+                "transfer_qty": transfer_qty,
 
                 "s_warehouse": RECEIVING_WAREHOUSE,
                 "t_warehouse": MANUFACTURING_WAREHOUSE,

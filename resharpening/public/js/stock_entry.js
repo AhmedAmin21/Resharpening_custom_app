@@ -587,8 +587,15 @@ function add_selected_items_to_stock_entry(
                 item.qty;
 
             row.uom =
-                item.uom;
+                item.stock_uom || item.uom;
+
+            row.stock_uom =
+                item.stock_uom || item.uom;
+
             row.conversion_factor = 1;
+
+            row.transfer_qty =
+                item.qty;
             /*
              * Manufacturing -> Ready
              */
