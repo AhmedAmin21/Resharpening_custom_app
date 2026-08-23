@@ -51,6 +51,13 @@ function show_resharpening_return_dialog(frm) {
             },
 
             {
+                fieldname: "item",
+                fieldtype: "Link",
+                label: __("Item"),
+                options: "Item",
+            },
+
+            {
                 fieldname: "purchase_receipt",
                 fieldtype: "Select",
                 label: __("Purchase Receipt"),
@@ -76,6 +83,18 @@ function show_resharpening_return_dialog(frm) {
 
     dialog.show();
 
+    dialog.fields_dict.item.get_query =
+        function () {
+            return {
+                filters: {
+                    name: [
+                        "like",
+                        "%res%",
+                    ],
+                },
+            };
+        };
+
     /*
      * Supplier filtering happens locally.
      * No server request.
@@ -85,11 +104,34 @@ function show_resharpening_return_dialog(frm) {
             const supplier =
                 dialog.get_value("supplier");
 
-        update_purchase_receipt_options(
-            dialog,
-            supplier
-        );
-    };
+            const item =
+                dialog.get_value("item");
+
+            update_purchase_receipt_options(
+                dialog,
+                supplier,
+                item
+            );
+        };
+
+    /*
+     * Item filtering happens locally.
+     * No server request.
+     */
+    dialog.fields_dict.item.df.onchange =
+        function () {
+            const supplier =
+                dialog.get_value("supplier");
+
+            const item =
+                dialog.get_value("item");
+
+            update_purchase_receipt_options(
+                dialog,
+                supplier,
+                item
+            );
+        };
 
     /*
      * Purchase Receipt selection happens locally.
@@ -169,6 +211,7 @@ function load_resharpening_data(dialog) {
 
             update_purchase_receipt_options(
                 dialog,
+                null,
                 null
             );
         },
@@ -178,21 +221,34 @@ function load_resharpening_data(dialog) {
 
 function update_purchase_receipt_options(
     dialog,
-    supplier
+    supplier,
+    item
 ) {
     const orders =
         dialog.resharpening_orders || [];
 
     /*
-     * Supplier filtering is performed
-     * entirely in the browser.
+     * Supplier and Item filtering is
+     * performed entirely in the browser.
      */
-    const filtered_orders = supplier
+    let filtered_orders = supplier
         ? orders.filter(
               order =>
                   order.supplier === supplier
           )
         : orders;
+
+    if (supplier && item) {
+        filtered_orders =
+            filtered_orders.filter(
+                order =>
+                    order.items.some(
+                        i =>
+                            i.item_code ===
+                            item
+                    )
+            );
+    }
 
     /*
      * Map the visible label to the actual

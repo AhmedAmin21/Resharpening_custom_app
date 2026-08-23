@@ -57,7 +57,10 @@ function get_status_label(status) {
             "مغلق",
 
         "Invoiced":
-            "تم الفوترة والتسليم"
+            "تم الفوترة والتسليم",
+
+        "Unable to Resharpen":
+            "مرتجعات غير قابلة لإعادة السن"
     };
 
     return labels[status] || status || "";
@@ -432,6 +435,44 @@ function render_dashboard($main, page) {
 
 
             /* =================================================
+               NON-RESHARPENABLE RETURNS
+               Crimson / Rose Red
+               ================================================= */
+
+            .resharp-summary-card.non-resharpenable {
+                background: rgba(
+                    239,
+                    68,
+                    68,
+                    0.08
+                );
+            }
+
+
+            .resharp-summary-card.non-resharpenable::before {
+                background: #ef4444;
+            }
+
+
+            .resharp-summary-card.non-resharpenable
+            .resharp-summary-number {
+                color: #b91c1c;
+            }
+
+
+            .resharp-summary-card.non-resharpenable.active {
+                border-color: #ef4444;
+
+                background: rgba(
+                    239,
+                    68,
+                    68,
+                    0.13
+                );
+            }
+
+
+            /* =================================================
                SUMMARY CONTENT
                ================================================= */
 
@@ -658,6 +699,10 @@ function render_dashboard($main, page) {
                 width: 80px;
             }
 
+            .resharp-table .col-invoiced {
+                width: 80px;
+            }
+
             .resharp-table .col-returned {
                 width: 80px;
             }
@@ -683,6 +728,12 @@ function render_dashboard($main, page) {
             .ready-qty-cell {
                 background-color: #f0fdf4 !important;
                 color: #166534;
+            }
+
+
+            .invoiced-qty-cell {
+                background-color: #f0fdfa !important;
+                color: #0f766e;
             }
 
 
@@ -940,6 +991,28 @@ function render_dashboard($main, page) {
 
 
             /* =================================================
+               NON-RESHARPENABLE STATUS
+               ================================================= */
+
+            .resharp-status-non-resharpenable {
+                background: rgba(
+                    239,
+                    68,
+                    68,
+                    0.14
+                );
+
+                color: #b91c1c;
+            }
+
+
+            .resharp-status-non-resharpenable
+            .resharp-status-dot {
+                background: #ef4444;
+            }
+
+
+            /* =================================================
                UNKNOWN
                ================================================= */
 
@@ -1064,6 +1137,32 @@ function render_dashboard($main, page) {
             }
 
 
+            .resharp-view-invoices-btn {
+                font-size: 11px;
+                font-weight: 600;
+                padding: 3px 6px;
+                white-space: nowrap;
+                border-radius: 4px;
+                text-align: center;
+                line-height: 1.3;
+                width: 100%;
+                background: #f0fdfa;
+                border: 1px solid #0d9488;
+                color: #0f766e;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+            }
+
+
+            .resharp-view-invoices-btn:hover {
+                background: #ccfbf1;
+                border-color: #0f766e;
+                color: #115e59;
+            }
+
+
             .resharp-invoiced-badge-wrap {
                 display: inline-flex;
                 flex-direction: column;
@@ -1175,7 +1274,7 @@ function render_dashboard($main, page) {
             <div class="resharp-dashboard-header">
 
                 <div class="resharp-dashboard-title">
-                    لوحة متابعة عمليات إعادة الشحذ
+                    لوحة متابعة عمليات اعادة السن
                 </div>
 
 
@@ -1212,7 +1311,7 @@ function render_dashboard($main, page) {
 
                 <!-- Awaiting -->
 
-                <div class="col-md-4 col-lg-2 mb-3">
+                <div class="col-md-4 col-lg-3 mb-3">
 
                     <div
                         class="
@@ -1258,7 +1357,7 @@ function render_dashboard($main, page) {
 
                 <!-- In Manufacturing -->
 
-                <div class="col-md-4 col-lg-2 mb-3">
+                <div class="col-md-4 col-lg-3 mb-3">
 
                     <div
                         class="
@@ -1304,7 +1403,7 @@ function render_dashboard($main, page) {
 
                 <!-- Partially Ready -->
 
-                <div class="col-md-4 col-lg-2 mb-3">
+                <div class="col-md-4 col-lg-3 mb-3">
 
                     <div
                         class="
@@ -1350,7 +1449,7 @@ function render_dashboard($main, page) {
 
                 <!-- Ready / Partially Returned -->
 
-                <div class="col-md-4 col-lg-2 mb-3">
+                <div class="col-md-4 col-lg-3 mb-3">
 
                     <div
                         class="
@@ -1396,7 +1495,7 @@ function render_dashboard($main, page) {
 
                 <!-- Ready -->
 
-                <div class="col-md-4 col-lg-2 mb-3">
+                <div class="col-md-4 col-lg-3 mb-3">
 
                     <div
                         class="
@@ -1442,7 +1541,7 @@ function render_dashboard($main, page) {
 
                 <!-- Closed -->
 
-                <div class="col-md-4 col-lg-2 mb-3">
+                <div class="col-md-4 col-lg-3 mb-3">
 
                     <div
                         class="
@@ -1488,7 +1587,7 @@ function render_dashboard($main, page) {
 
                 <!-- Invoiced -->
 
-                <div class="col-md-4 col-lg-2 mb-3">
+                <div class="col-md-4 col-lg-3 mb-3">
 
                     <div
                         class="
@@ -1521,6 +1620,52 @@ function render_dashboard($main, page) {
                             <div
                                 class="resharp-summary-qty"
                                 data-status-qty="Invoiced"
+                            >
+                                0 قطعة
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Unable to Resharpen -->
+
+                <div class="col-md-4 col-lg-3 mb-3">
+
+                    <div
+                        class="
+                            resharp-summary-card
+                            non-resharpenable
+                        "
+                        data-summary-status="Unable to Resharpen"
+                    >
+
+                        <div
+                            class="card-body"
+                            style="padding: 18px;"
+                        >
+
+                            <div class="resharp-summary-label">
+                                مرتجعات غير قابلة لإعادة السن
+                            </div>
+
+                            <div
+                                class="resharp-summary-number"
+                                data-status="Unable to Resharpen"
+                            >
+                                0
+                            </div>
+
+                            <div class="resharp-summary-hint">
+                                عدد القطع المرتجعة التي تعذر إعادة سنها
+                            </div>
+
+                            <div
+                                class="resharp-summary-qty"
+                                data-status-qty="Unable to Resharpen"
                             >
                                 0 قطعة
                             </div>
@@ -1606,6 +1751,10 @@ function render_dashboard($main, page) {
 
                             <option value="Invoiced">
                                 تم الفوترة والتسليم
+                            </option>
+
+                            <option value="Unable to Resharpen">
+                                مرتجعات غير قابلة لإعادة السن
                             </option>
 
                         </select>
@@ -2163,7 +2312,9 @@ function update_summary(
 
         "Closed",
 
-        "Invoiced"
+        "Invoiced",
+
+        "Unable to Resharpen"
     ];
 
 
@@ -2335,6 +2486,8 @@ function render_orders(
 
                     <col class="col-ready">
 
+                    <col class="col-invoiced">
+
                     <col class="col-returned">
 
                     <col class="col-status">
@@ -2379,6 +2532,10 @@ function render_orders(
                         </th>
 
                         <th class="text-center">
+                            المفوتر
+                        </th>
+
+                        <th class="text-center">
                             المرتجع
                         </th>
 
@@ -2410,6 +2567,10 @@ function render_orders(
             const can_close =
                 order.status === "Ready" ||
                 order.status === "Ready / Partially Returned";
+
+            const can_invoice = (order.ready || 0) > 0;
+            const invoice_count = order.invoice_count || (order.has_sales_invoice ? 1 : 0);
+            const has_invoices = invoice_count > 0;
 
 
             html += `
@@ -2447,8 +2608,8 @@ function render_orders(
                     <td>
 
                         ${frappe.utils.escape_html(
-                            order.supplier_name || order.supplier || ""
-                        )}
+                order.supplier_name || order.supplier || ""
+            )}
 
                     </td>
 
@@ -2459,8 +2620,8 @@ function render_orders(
 
                         <a
                             href="#Form/Purchase Receipt/${encodeURIComponent(
-                                order.purchase_receipt
-                            )}"
+                order.purchase_receipt
+            )}"
                             class="resharp-receipt-link"
                             data-purchase-receipt="${receipt}"
                         >
@@ -2474,13 +2635,12 @@ function render_orders(
 
                     <td>
 
-                        ${
-                            order.receipt_date
-                                ? frappe.datetime.str_to_user(
-                                    order.receipt_date
-                                )
-                                : ""
-                        }
+                        ${order.receipt_date
+                    ? frappe.datetime.str_to_user(
+                        order.receipt_date
+                    )
+                    : ""
+                }
 
                     </td>
 
@@ -2523,6 +2683,17 @@ function render_orders(
                     </td>
 
 
+                    <!-- Invoiced -->
+
+                    <td class="text-center ${(order.invoiced || 0) > 0 ? "invoiced-qty-cell" : ""}">
+
+                        <strong>
+                            ${order.invoiced || 0}
+                        </strong>
+
+                    </td>
+
+
                     <!-- Returned -->
 
                     <td class="text-center ${(order.returned || 0) > 0 ? "returned-qty-cell" : ""}">
@@ -2536,18 +2707,7 @@ function render_orders(
 
                     <td>
 
-                        ${
-                            order.status === "Invoiced"
-                                ? `
-                                    <div class="resharp-invoiced-badge-wrap">
-                                        ${get_status_badge(order.status)}
-                                        <span class="resharp-invoiced-qty-tag">
-                                            الكمية: ${order.invoiced_qty || 0}
-                                        </span>
-                                    </div>
-                                  `
-                                : get_status_badge(order.status)
-                        }
+                        ${get_status_badge(order.status)}
 
                     </td>
 
@@ -2558,9 +2718,62 @@ function render_orders(
 
                         <div class="resharp-actions-cell">
 
-                            ${
-                                order.has_sales_invoice || order.status === "Invoiced"
-                                    ? `
+                            <button
+                                type="button"
+                                class="
+                                    btn
+                                    btn-xs
+                                    btn-default
+                                    resharp-note-btn
+                                    ${order.note ? "has-note" : ""}
+                                "
+                                data-purchase-receipt="${receipt}"
+                                data-note="${frappe.utils.escape_html(order.note || "")}"
+                                title="${order.note ? "عرض / تعديل الملاحظة" : "إضافة ملاحظة"}"
+                            >
+                                ${order.note ? "يوجد ملاحظة" : "ملاحظة"}
+                            </button>
+
+                            ${can_close
+                    ? `
+                                        <button
+                                            type="button"
+                                            class="
+                                                btn
+                                                btn-xs
+                                                btn-primary
+                                                resharp-close-btn
+                                            "
+                                            data-purchase-receipt="${receipt}"
+                                            data-status="${frappe.utils.escape_html(
+                        order.status
+                    )}"
+                                        >
+                                            إغلاق
+                                        </button>
+                                      `
+                    : ""
+                }
+
+                            ${can_invoice
+                    ? `
+                                        <button
+                                            type="button"
+                                            class="
+                                                btn
+                                                btn-xs
+                                                resharp-invoice-btn
+                                            "
+                                            data-purchase-receipt="${receipt}"
+                                        >
+                                            فاتورة مبيعات
+                                        </button>
+                                      `
+                    : ""
+                }
+
+                            ${!can_invoice && invoice_count === 1 && order.sales_invoice
+                    ? `
                                         <button
                                             type="button"
                                             class="
@@ -2569,70 +2782,32 @@ function render_orders(
                                                 resharp-open-invoice-btn
                                             "
                                             data-sales-invoice="${frappe.utils.escape_html(
-                                                order.sales_invoice || ""
-                                            )}"
+                        order.sales_invoice || ""
+                    )}"
                                         >
                                             فتح فاتورة المبيعات ↗
                                         </button>
                                       `
-                                    : `
+                    : ""
+                }
+
+                            ${(can_invoice && has_invoices) || (!can_invoice && invoice_count > 1) || (!can_invoice && invoice_count === 1 && !order.sales_invoice)
+                    ? `
                                         <button
                                             type="button"
                                             class="
                                                 btn
                                                 btn-xs
-                                                btn-default
-                                                resharp-note-btn
-                                                ${order.note ? "has-note" : ""}
+                                                resharp-view-invoices-btn
                                             "
                                             data-purchase-receipt="${receipt}"
-                                            data-note="${frappe.utils.escape_html(order.note || "")}"
-                                            title="${order.note ? "عرض / تعديل الملاحظة" : "إضافة ملاحظة"}"
+                                            title="عرض فواتير المبيعات المرتبطة"
                                         >
-                                            ${order.note ? "يوجد ملاحظة" : "ملاحظة"}
+                                            عرض فواتير المبيعات (${invoice_count})
                                         </button>
-
-                                        ${
-                                            can_close
-                                                ? `
-                                                    <button
-                                                        type="button"
-                                                        class="
-                                                            btn
-                                                            btn-xs
-                                                            btn-primary
-                                                            resharp-close-btn
-                                                        "
-                                                        data-purchase-receipt="${receipt}"
-                                                        data-status="${frappe.utils.escape_html(
-                                                            order.status
-                                                        )}"
-                                                    >
-                                                        إغلاق
-                                                    </button>
-                                                  `
-                                                : ""
-                                        }
-
-                                        ${
-                                            order.status === "Closed" && !order.has_sales_invoice
-                                                ? `
-                                                    <button
-                                                        type="button"
-                                                        class="
-                                                            btn
-                                                            btn-xs
-                                                            resharp-invoice-btn
-                                                        "
-                                                        data-purchase-receipt="${receipt}"
-                                                    >
-                                                        فاتورة مبيعات
-                                                    </button>
-                                                  `
-                                                : ""
-                                        }
                                       `
-                            }
+                    : ""
+                }
 
                         </div>
 
@@ -2649,7 +2824,7 @@ function render_orders(
                     style="display: none;"
                 >
 
-                    <td colspan="11">
+                    <td colspan="12">
 
                         <div
                             class="
@@ -2676,9 +2851,9 @@ function render_orders(
 
 
         ${render_pagination(
-            page,
-            total_pages
-        )}
+        page,
+        total_pages
+    )}
 
     `;
 
@@ -3247,6 +3422,77 @@ function render_orders(
         }
     );
 
+
+    /* =========================================================
+       VIEW SALES INVOICES BUTTON (DIALOG)
+       ========================================================= */
+
+    $container.find(
+        ".resharp-view-invoices-btn"
+    ).on(
+        "click",
+        function (event) {
+
+            event.preventDefault();
+
+            event.stopPropagation();
+
+
+            const $button =
+                $(this);
+
+
+            const purchase_receipt =
+                $button.attr(
+                    "data-purchase-receipt"
+                );
+
+
+            frappe.call({
+
+                method:
+                    "resharpening.api.dashboard.get_resharpening_sales_invoices",
+
+                args: {
+                    purchase_receipt:
+                        purchase_receipt
+                },
+
+                freeze: true,
+
+                freeze_message:
+                    "جاري تحميل فواتير المبيعات...",
+
+                callback: function (response) {
+
+                    const result =
+                        response.message || {};
+
+
+                    const invoices =
+                        result.invoices || [];
+
+
+                    show_invoices_dialog(
+                        purchase_receipt,
+                        invoices
+                    );
+
+                },
+
+                error: function () {
+
+                    frappe.msgprint(
+                        "حدث خطأ أثناء تحميل فواتير المبيعات."
+                    );
+
+                }
+
+            });
+
+        }
+    );
+
     $container.find(
         ".resharp-page-btn"
     ).on(
@@ -3330,11 +3576,10 @@ function render_pagination(
                         resharp-page-btn
                     "
                     data-page="${page.current_page - 1}"
-                    ${
-                        page.current_page <= 1
-                            ? "disabled"
-                            : ""
-                    }
+                    ${page.current_page <= 1
+            ? "disabled"
+            : ""
+        }
                 >
                     ‹
                 </button>
@@ -3356,8 +3601,8 @@ function render_pagination(
         Math.min(
             total_pages,
             start_page +
-                max_visible_pages -
-                1
+            max_visible_pages -
+            1
         );
 
 
@@ -3370,8 +3615,8 @@ function render_pagination(
             Math.max(
                 1,
                 end_page -
-                    max_visible_pages +
-                    1
+                max_visible_pages +
+                1
             );
     }
 
@@ -3429,11 +3674,10 @@ function render_pagination(
                     btn
                     btn-sm
                     resharp-page-btn
-                    ${
-                        i === page.current_page
-                            ? "btn-primary"
-                            : "btn-default"
-                    }
+                    ${i === page.current_page
+                ? "btn-primary"
+                : "btn-default"
+            }
                 "
                 data-page="${i}"
             >
@@ -3499,11 +3743,10 @@ function render_pagination(
                         resharp-page-btn
                     "
                     data-page="${page.current_page + 1}"
-                    ${
-                        page.current_page >= total_pages
-                            ? "disabled"
-                            : ""
-                    }
+                    ${page.current_page >= total_pages
+            ? "disabled"
+            : ""
+        }
                 >
                     ›
                 </button>
@@ -3607,14 +3850,14 @@ function toggle_order_details(
 
     if (
         page.order_details_cache[
-            purchase_receipt
+        purchase_receipt
         ]
     ) {
 
         render_order_details_row(
             $details_row,
             page.order_details_cache[
-                purchase_receipt
+            purchase_receipt
             ]
         );
 
@@ -3763,6 +4006,10 @@ function render_order_details_row(
                             </th>
 
                             <th class="text-center">
+                                المفوتر
+                            </th>
+
+                            <th class="text-center">
                                 المرتجع
                             </th>
 
@@ -3787,7 +4034,7 @@ function render_order_details_row(
             <tr>
 
                 <td
-                    colspan="6"
+                    colspan="7"
                     class="
                         text-muted
                         text-center
@@ -3820,15 +4067,14 @@ function render_order_details_row(
                         <strong>
 
                             ${frappe.utils.escape_html(
-                                item.item_code || ""
-                            )}
+                item.item_code || ""
+            )}
 
                         </strong>
 
 
-                        ${
-                            item.item_name
-                                ? `
+                        ${item.item_name
+                    ? `
 
                                     <div
                                         class="
@@ -3837,14 +4083,14 @@ function render_order_details_row(
                                     >
 
                                         ${frappe.utils.escape_html(
-                                            item.item_name
-                                        )}
+                        item.item_name
+                    )}
 
                                     </div>
 
                                   `
-                                : ""
-                        }
+                    : ""
+                }
 
                     </td>
 
@@ -3882,6 +4128,17 @@ function render_order_details_row(
 
                         <strong>
                             ${item.ready || 0}
+                        </strong>
+
+                    </td>
+
+
+                    <!-- Invoiced -->
+
+                    <td class="text-center ${(item.invoiced || 0) > 0 ? "invoiced-qty-cell" : ""}">
+
+                        <strong>
+                            ${item.invoiced || 0}
                         </strong>
 
                     </td>
@@ -3998,6 +4255,15 @@ function get_status_badge(
     }
 
 
+    else if (
+        status === "Unable to Resharpen"
+    ) {
+
+        css_class =
+            "resharp-status-non-resharpenable";
+    }
+
+
     return `
 
         <span
@@ -4015,10 +4281,110 @@ function get_status_badge(
 
 
             ${frappe.utils.escape_html(
-                get_status_label(status)
-            )}
+        get_status_label(status)
+    )}
 
         </span>
 
     `;
 }
+
+
+/* =============================================================
+   SHOW SALES INVOICES DIALOG
+   ============================================================= */
+
+function show_invoices_dialog(
+    purchase_receipt,
+    invoices
+) {
+    let rows_html = "";
+
+    if (!invoices || !invoices.length) {
+        rows_html = `
+            <tr>
+                <td colspan="5" class="text-center text-muted" style="padding: 15px;">
+                    لا توجد فواتير مبيعات مسجلة لهذا الإذن.
+                </td>
+            </tr>
+        `;
+    } else {
+        invoices.forEach(function (inv, idx) {
+            let status_badge_class = "badge-default";
+            let status_label = inv.status || "Draft";
+
+            if (inv.docstatus === 1) {
+                status_badge_class = "badge-success";
+                status_label = "مقدمة (Submitted)";
+            } else if (inv.docstatus === 0) {
+                status_badge_class = "badge-warning";
+                status_label = "مسودة (Draft)";
+            } else if (inv.docstatus === 2) {
+                status_badge_class = "badge-danger";
+                status_label = "ملغاة (Cancelled)";
+            }
+
+            const inv_name = frappe.utils.escape_html(inv.name);
+            const date_str = inv.posting_date ? frappe.datetime.str_to_user(inv.posting_date) : "";
+
+            rows_html += `
+                <tr>
+                    <td class="text-center">${idx + 1}</td>
+                    <td>
+                        <a href="javascript:void(0);" class="resharp-dialog-inv-link" data-invoice="${inv_name}">
+                            <strong>${inv_name}</strong>
+                        </a>
+                    </td>
+                    <td class="text-center">${date_str}</td>
+                    <td class="text-center"><strong>${inv.total_qty || 0}</strong></td>
+                    <td class="text-center">
+                        <span class="badge ${status_badge_class}" style="font-size: 11px; padding: 4px 8px;">
+                            ${frappe.utils.escape_html(status_label)}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    const content_html = `
+        <div class="table-responsive" style="margin-top: 10px;">
+            <table class="table table-bordered table-sm" style="margin-bottom: 0;">
+                <thead style="background: var(--subtle-fg);">
+                    <tr>
+                        <th class="text-center" style="width: 40px;">#</th>
+                        <th>رقم الفاتورة</th>
+                        <th class="text-center" style="width: 120px;">التاريخ</th>
+                        <th class="text-center" style="width: 80px;">الكمية</th>
+                        <th class="text-center" style="width: 140px;">الحالة</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows_html}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    const dialog = new frappe.ui.Dialog({
+        title: `فواتير المبيعات — ${frappe.utils.escape_html(purchase_receipt)}`,
+        fields: [
+            {
+                fieldname: "invoices_html",
+                fieldtype: "HTML",
+                options: content_html,
+            },
+        ],
+    });
+
+    dialog.set_secondary_action_label("إغلاق");
+    dialog.show();
+
+    dialog.$wrapper.find(".resharp-dialog-inv-link").on("click", function (e) {
+        e.preventDefault();
+        const invoice_name = $(this).attr("data-invoice");
+        dialog.hide();
+        frappe.set_route("Form", "Sales Invoice", invoice_name);
+    });
+}
+

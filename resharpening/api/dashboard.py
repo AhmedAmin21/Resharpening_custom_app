@@ -169,8 +169,6 @@ def get_resharpening_orders(
 
             pr.custom_resharpening_note AS note,
 
-            sinv.sales_invoice,
-
 
             COALESCE(
                 received.received_qty,
@@ -206,7 +204,14 @@ def get_resharpening_orders(
 
 
             COALESCE(
-                ready.ready_qty,
+                invoiced.invoiced_qty,
+                0
+            ) AS invoiced,
+
+
+            GREATEST(
+                COALESCE(ready.ready_qty, 0)
+                - COALESCE(invoiced.invoiced_qty, 0),
                 0
             ) AS ready
 
@@ -371,35 +376,43 @@ def get_resharpening_orders(
 
 
         # -----------------------------------------------------
-        # Sales Invoice (for Invoiced status detection)
+        # Invoiced quantities (submitted Sales Invoices only)
         # -----------------------------------------------------
 
         LEFT JOIN (
 
             SELECT
 
-                custom_resharpening_purchase_receipt
+                si.custom_resharpening_purchase_receipt
                     AS purchase_receipt,
 
-                name AS sales_invoice
+                SUM(sii.qty) AS invoiced_qty
 
 
-            FROM `tabSales Invoice`
+            FROM `tabSales Invoice` si
+
+            INNER JOIN `tabSales Invoice Item` sii
+                ON sii.parent = si.name
 
 
             WHERE
 
-                custom_resharpening_purchase_receipt
+                si.custom_resharpening_purchase_receipt
                     IS NOT NULL
 
-                AND custom_resharpening_purchase_receipt
+                AND si.custom_resharpening_purchase_receipt
                     != ''
 
-                AND docstatus < 2
+                AND si.docstatus = 1
 
-        ) sinv
 
-            ON sinv.purchase_receipt = pr.name
+            GROUP BY
+
+                si.custom_resharpening_purchase_receipt
+
+        ) invoiced
+
+            ON invoiced.purchase_receipt = pr.name
 
 
         WHERE
@@ -428,11 +441,13 @@ def get_resharpening_orders(
         CASE
 
             # -------------------------------------------------
-            # Invoiced (takes priority over Closed)
+            # Invoiced (all received items invoiced or returned)
             # -------------------------------------------------
 
-            WHEN purchase_receipt_status = 'Closed'
-                 AND sales_invoice IS NOT NULL
+            WHEN (
+                invoiced + returned >= received
+                AND invoiced > 0
+            )
 
                 THEN 'Invoiced'
 
@@ -461,7 +476,7 @@ def get_resharpening_orders(
 
             WHEN (
 
-                ready + returned >= received
+                ready + invoiced + returned >= received
 
                 AND returned > 0
 
@@ -476,7 +491,7 @@ def get_resharpening_orders(
 
             WHEN (
 
-                ready >= received
+                ready + invoiced + returned >= received
 
                 AND returned <= 0
 
@@ -534,7 +549,24 @@ def get_resharpening_orders(
     # Status filter
     # ---------------------------------------------------------
 
-    if status:
+    if status == "Unable to Resharpen":
+
+        filtered_query = f"""
+
+            SELECT *
+
+            FROM (
+
+                {filtered_query}
+
+            ) AS filtered_orders
+
+
+            WHERE returned > 0
+
+        """
+
+    elif status:
 
         filtered_query = f"""
 
@@ -573,11 +605,13 @@ def get_resharpening_orders(
                 COALESCE(
                     SUM(
                         CASE
-                            WHEN status = 'Invoiced' THEN ready
+                            WHEN status = 'Invoiced' THEN invoiced
                             ELSE received
                         END
                     ), 0
-                ) AS total_qty
+                ) AS total_qty,
+                COALESCE(SUM(returned), 0) AS returned_qty,
+                COALESCE(SUM(CASE WHEN returned > 0 THEN 1 ELSE 0 END), 0) AS returned_count
             FROM (
                 {filtered_query}
             ) AS status_orders
@@ -589,6 +623,8 @@ def get_resharpening_orders(
     )
 
     total_count = sum(row.count for row in status_counts_rows)
+    total_returned_qty = sum(row.returned_qty for row in status_counts_rows)
+    returned_orders_count = sum(row.returned_count for row in status_counts_rows)
 
     status_counts = {
         "Awaiting Manufacturing": {
@@ -619,10 +655,14 @@ def get_resharpening_orders(
             "count": 0,
             "total_qty": 0,
         },
+        "Unable to Resharpen": {
+            "count": returned_orders_count,
+            "total_qty": total_returned_qty,
+        },
     }
 
     for row in status_counts_rows:
-        if row.status in status_counts:
+        if row.status in status_counts and row.status != "Unable to Resharpen":
             status_counts[row.status] = {
                 "count": row.count,
                 "total_qty": row.total_qty,
@@ -688,6 +728,39 @@ def get_resharpening_orders(
 
 
     # ---------------------------------------------------------
+    # Bulk fetch invoice counts for current page
+    # ---------------------------------------------------------
+
+    pr_names = [row.purchase_receipt for row in rows if row.purchase_receipt]
+    invoice_counts_map = {}
+
+    if pr_names:
+        invoice_counts_data = frappe.db.sql(
+            """
+            SELECT
+                custom_resharpening_purchase_receipt AS purchase_receipt,
+                COUNT(*) AS invoice_count,
+                MAX(name) AS latest_sales_invoice
+            FROM `tabSales Invoice`
+            WHERE
+                custom_resharpening_purchase_receipt IN %s
+                AND docstatus < 2
+            GROUP BY
+                custom_resharpening_purchase_receipt
+            """,
+            (tuple(pr_names),),
+            as_dict=True,
+        )
+        invoice_counts_map = {
+            row.purchase_receipt: {
+                "invoice_count": row.invoice_count or 0,
+                "sales_invoice": row.latest_sales_invoice or "",
+            }
+            for row in invoice_counts_data
+        }
+
+
+    # ---------------------------------------------------------
     # Build response
     # ---------------------------------------------------------
 
@@ -696,9 +769,9 @@ def get_resharpening_orders(
 
     for row in rows:
 
-        is_invoiced = (
-            row.status == "Invoiced"
-        )
+        inv_info = invoice_counts_map.get(row.purchase_receipt, {})
+        invoice_count = inv_info.get("invoice_count", 0)
+        sales_invoice = inv_info.get("sales_invoice", "")
 
         orders.append({
 
@@ -725,8 +798,7 @@ def get_resharpening_orders(
 
 
             "returned":
-                0 if is_invoiced
-                else (row.returned or 0),
+                row.returned or 0,
 
 
             "not_sent":
@@ -738,13 +810,11 @@ def get_resharpening_orders(
 
 
             "ready":
-                0 if is_invoiced
-                else (row.ready or 0),
+                row.ready or 0,
 
 
-            "invoiced_qty":
-                (row.ready or 0) if is_invoiced
-                else 0,
+            "invoiced":
+                row.invoiced or 0,
 
 
             "status":
@@ -758,10 +828,13 @@ def get_resharpening_orders(
                 row.note or "",
 
             "has_sales_invoice":
-                bool(row.sales_invoice),
+                invoice_count > 0,
+
+            "invoice_count":
+                invoice_count,
 
             "sales_invoice":
-                row.sales_invoice or "",
+                sales_invoice if invoice_count == 1 else "",
 
         })
 
@@ -929,7 +1002,17 @@ def close_resharpening_order(
                     return_pr.is_return = 1
                     AND return_pr.docstatus = 1
                     AND return_pr.return_against = %(pr)s
-            ) AS returned
+            ) AS returned,
+
+            (
+                SELECT COALESCE(SUM(sii.qty), 0)
+                FROM `tabSales Invoice` si
+                INNER JOIN `tabSales Invoice Item` sii
+                    ON sii.parent = si.name
+                WHERE
+                    si.custom_resharpening_purchase_receipt = %(pr)s
+                    AND si.docstatus = 1
+            ) AS invoiced
         """,
         {
             "pr": purchase_receipt,
@@ -943,13 +1026,20 @@ def close_resharpening_order(
     sent = qty_row.sent or 0
     ready = qty_row.ready or 0
     returned = qty_row.returned or 0
+    invoiced = qty_row.invoiced or 0
+    available_ready = max(ready - invoiced, 0)
 
 
     # ---------------------------------------------------------
     # Calculate operational status
     # ---------------------------------------------------------
 
-    if sent <= 0:
+    if (invoiced + returned >= received) and invoiced > 0:
+
+        operational_status = "Invoiced"
+
+
+    elif sent <= 0:
 
         operational_status = (
             "Awaiting Manufacturing"
@@ -958,7 +1048,7 @@ def close_resharpening_order(
 
     elif (
 
-        ready + returned >= received
+        available_ready + invoiced + returned >= received
 
         and returned > 0
 
@@ -971,7 +1061,7 @@ def close_resharpening_order(
 
     elif (
 
-        ready >= received
+        available_ready + invoiced + returned >= received
 
         and returned <= 0
 
@@ -980,7 +1070,7 @@ def close_resharpening_order(
         operational_status = "Ready"
 
 
-    elif ready > 0:
+    elif available_ready > 0:
 
         operational_status = (
             "Partially Ready"
@@ -1316,6 +1406,29 @@ def get_resharpening_order_details(
 
 
     # ---------------------------------------------------------
+    # Invoiced quantities (submitted Sales Invoices only)
+    # ---------------------------------------------------------
+
+    invoiced_rows = frappe.db.sql(
+        """
+        SELECT
+            sii.item_code,
+            SUM(sii.qty) AS qty
+        FROM `tabSales Invoice Item` sii
+        INNER JOIN `tabSales Invoice` si
+            ON si.name = sii.parent
+        WHERE
+            si.custom_resharpening_purchase_receipt = %s
+            AND si.docstatus = 1
+        GROUP BY
+            sii.item_code
+        """,
+        purchase_receipt,
+        as_dict=True,
+    )
+
+
+    # ---------------------------------------------------------
     # Maps
     # ---------------------------------------------------------
 
@@ -1349,6 +1462,16 @@ def get_resharpening_order_details(
     }
 
 
+    invoiced_map = {
+
+        row.item_code:
+            row.qty or 0
+
+        for row in invoiced_rows
+
+    }
+
+
     # ---------------------------------------------------------
     # Build item-level result
     # ---------------------------------------------------------
@@ -1372,7 +1495,7 @@ def get_resharpening_order_details(
         )
 
 
-        ready_qty = ready_map.get(
+        total_ready_qty = ready_map.get(
 
             item.item_code,
 
@@ -1384,6 +1507,24 @@ def get_resharpening_order_details(
         returned_qty = returned_map.get(
 
             item.item_code,
+
+            0,
+
+        )
+
+
+        invoiced_qty = invoiced_map.get(
+
+            item.item_code,
+
+            0,
+
+        )
+
+
+        available_ready_qty = max(
+
+            total_ready_qty - invoiced_qty,
 
             0,
 
@@ -1409,7 +1550,7 @@ def get_resharpening_order_details(
         in_manufacturing_qty = max(
 
             sent_qty
-            - ready_qty
+            - total_ready_qty
             - returned_qty,
 
             0,
@@ -1438,7 +1579,10 @@ def get_resharpening_order_details(
                 in_manufacturing_qty,
 
             "ready":
-                ready_qty,
+                available_ready_qty,
+
+            "invoiced":
+                invoiced_qty,
 
         })
 
@@ -1591,46 +1735,11 @@ def create_resharpening_sales_invoice(
         )
 
 
-    if receipt.status != "Closed":
-
-        frappe.throw(
-            "يمكن إنشاء فاتورة مبيعات فقط للطلبات المغلقة."
-        )
-
-
     # ---------------------------------------------------------
-    # Check for existing Sales Invoice (duplicate prevention)
+    # Ensure custom field exists on Sales Invoice
     # ---------------------------------------------------------
 
     ensure_sales_invoice_pr_field()
-
-    existing_invoice = frappe.db.get_value(
-
-        "Sales Invoice",
-
-        {
-            "custom_resharpening_purchase_receipt":
-                purchase_receipt,
-            "docstatus": ["<", 2],
-        },
-
-        "name",
-
-    )
-
-
-    if existing_invoice:
-
-        return {
-
-            "success": True,
-
-            "existing": True,
-
-            "sales_invoice_name":
-                existing_invoice,
-
-        }
 
 
     # ---------------------------------------------------------
@@ -1666,10 +1775,7 @@ def create_resharpening_sales_invoice(
 
 
     # ---------------------------------------------------------
-    # Calculate item-level ready quantities
-    #
-    # Reuse the same query patterns from
-    # get_resharpening_order_details()
+    # Calculate item-level available quantities
     # ---------------------------------------------------------
 
     company = (
@@ -1729,21 +1835,20 @@ def create_resharpening_sales_invoice(
         as_dict=True,
     )
 
-    # Purchase Returns
-    returned_rows = frappe.db.sql(
+    # Submitted Sales Invoices for this PR
+    invoiced_rows = frappe.db.sql(
         """
         SELECT
-            pri.item_code,
-            ABS(SUM(pri.qty)) AS qty
-        FROM `tabPurchase Receipt` return_pr
-        INNER JOIN `tabPurchase Receipt Item` pri
-            ON pri.parent = return_pr.name
+            sii.item_code,
+            SUM(sii.qty) AS qty
+        FROM `tabSales Invoice Item` sii
+        INNER JOIN `tabSales Invoice` si
+            ON si.name = sii.parent
         WHERE
-            return_pr.is_return = 1
-            AND return_pr.docstatus = 1
-            AND return_pr.return_against = %s
+            si.custom_resharpening_purchase_receipt = %s
+            AND si.docstatus = 1
         GROUP BY
-            pri.item_code
+            sii.item_code
         """,
         purchase_receipt,
         as_dict=True,
@@ -1755,22 +1860,29 @@ def create_resharpening_sales_invoice(
         for row in ready_rows
     }
 
-    returned_map = {
+    invoiced_map = {
         row.item_code: row.qty or 0
-        for row in returned_rows
+        for row in invoiced_rows
     }
 
     # ---------------------------------------------------------
-    # Build invoice items (only items with ready_qty > 0)
+    # Build invoice items (only items with available_qty > 0)
     # ---------------------------------------------------------
 
-    ready_items = [item for item in items if ready_map.get(item.item_code, 0) > 0]
-    if not ready_items:
+    items_to_invoice = []
+    for item in items:
+        total_ready = ready_map.get(item.item_code, 0)
+        already_invoiced = invoiced_map.get(item.item_code, 0)
+        available_qty = max(total_ready - already_invoiced, 0)
+        if available_qty > 0:
+            items_to_invoice.append((item, available_qty))
+
+    if not items_to_invoice:
         frappe.throw(
-            "لا توجد أصناف جاهزة لإنشاء فاتورة مبيعات."
+            "لا توجد كمية جاهزة متاحة للفوترة."
         )
 
-    item_codes_tuple = tuple(set(item.item_code for item in ready_items))
+    item_codes_tuple = tuple(set(item.item_code for item, _ in items_to_invoice))
     items_meta_rows = frappe.db.sql(
         """
         SELECT name, item_name, stock_uom, description
@@ -1784,8 +1896,7 @@ def create_resharpening_sales_invoice(
 
     invoice_items = []
 
-    for item in ready_items:
-        ready_qty = ready_map.get(item.item_code, 0)
+    for item, available_qty in items_to_invoice:
         item_doc = items_meta_map.get(item.item_code) or {}
 
         item_name = item.item_name or item_doc.get("item_name") or item.item_code
@@ -1797,7 +1908,7 @@ def create_resharpening_sales_invoice(
         row_data = {
             "item_code": item.item_code,
             "item_name": item_name,
-            "qty": ready_qty,
+            "qty": available_qty,
             "uom": uom,
             "stock_uom": stock_uom,
             "conversion_factor": conversion_factor,
@@ -1805,11 +1916,6 @@ def create_resharpening_sales_invoice(
         }
 
         invoice_items.append(row_data)
-
-    if not invoice_items:
-        frappe.throw(
-            "لا توجد أصناف جاهزة لإنشاء فاتورة مبيعات."
-        )
 
     # ---------------------------------------------------------
     # Return invoice data for client-side form creation
@@ -1824,6 +1930,54 @@ def create_resharpening_sales_invoice(
             "custom_resharpening_purchase_receipt": purchase_receipt,
             "items": invoice_items,
         },
+    }
+
+
+# =============================================================
+# GET RESHARPENING SALES INVOICES (FOR VIEW DIALOG)
+# =============================================================
+
+@frappe.whitelist()
+def get_resharpening_sales_invoices(
+    purchase_receipt
+):
+    """
+    Return all active Sales Invoices (draft and submitted) linked to a
+    Purchase Receipt for the "عرض فواتير المبيعات" dialog.
+    """
+
+    if not purchase_receipt:
+        frappe.throw("Purchase Receipt is required")
+
+    invoices = frappe.db.sql(
+        """
+        SELECT
+            si.name,
+            si.posting_date,
+            si.docstatus,
+            si.status,
+            COALESCE(SUM(sii.qty), 0) AS total_qty
+        FROM `tabSales Invoice` si
+        LEFT JOIN `tabSales Invoice Item` sii
+            ON sii.parent = si.name
+        WHERE
+            si.custom_resharpening_purchase_receipt = %s
+            AND si.docstatus < 2
+        GROUP BY
+            si.name,
+            si.posting_date,
+            si.docstatus,
+            si.status
+        ORDER BY
+            si.creation ASC
+        """,
+        purchase_receipt,
+        as_dict=True,
+    )
+
+    return {
+        "success": True,
+        "invoices": invoices or [],
     }
 
 
