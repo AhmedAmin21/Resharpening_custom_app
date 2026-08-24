@@ -29,6 +29,10 @@ doctype_js = {
  "Stock Entry": "public/js/stock_entry.js",
 }
 
+doctype_list_js = {
+    "Purchase Invoice": "public/js/purchase_invoice_list.js",
+}
+
 doc_events = {
     "Stock Entry": {
         "before_submit": [
