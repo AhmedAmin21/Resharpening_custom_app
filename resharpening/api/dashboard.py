@@ -1694,6 +1694,7 @@ def create_resharpening_sales_invoice(
         [
             "name",
             "supplier",
+            "supplier_name",
             "status",
             "docstatus",
             "is_return",
@@ -1746,30 +1747,32 @@ def create_resharpening_sales_invoice(
     # Find matching Customer from Supplier
     # ---------------------------------------------------------
 
-    supplier_name = receipt.supplier
+    supplier_id = receipt.supplier
 
-    if not supplier_name:
+    if not supplier_id:
 
         frappe.throw(
             "لا يوجد مورد مرتبط بإذن الاستلام هذا."
         )
 
-
-    customer_name = frappe.db.get_value(
-
-        "Customer",
-
-        supplier_name,
-
-        "name",
-
+    # Get the display/actual name of the supplier
+    supplier_display_name = (
+        receipt.get("supplier_name")
+        or frappe.db.get_value("Supplier", supplier_id, "supplier_name")
+        or supplier_id
     )
 
+    # Match Customer by customer_name first, then fallback to ID/name
+    customer_name = (
+        frappe.db.get_value("Customer", {"customer_name": supplier_display_name}, "name")
+        or frappe.db.get_value("Customer", {"customer_name": supplier_id}, "name")
+        or frappe.db.get_value("Customer", supplier_id, "name")
+    )
 
     if not customer_name:
 
         frappe.throw(
-            f"لم يتم العثور على عميل مطابق للمورد: {supplier_name}\n\n"
+            f"لم يتم العثور على عميل مطابق للمورد: {supplier_display_name}\n\n"
             "يرجى إنشاء عميل بنفس الاسم أولاً."
         )
 
