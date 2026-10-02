@@ -606,6 +606,7 @@ def get_resharpening_orders(
                     SUM(
                         CASE
                             WHEN status = 'Invoiced' THEN invoiced
+                            WHEN status = 'Partially Ready' THEN ready
                             ELSE received
                         END
                     ), 0

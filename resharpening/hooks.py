@@ -23,7 +23,7 @@ app_license = "mit"
 
 # Includes in <head>
 # ------------------
-app_include_css = "/assets/resharpening/css/resharpening.css"
+app_include_css = ["/assets/resharpening/css/resharpening.css","/assets/resharpening/css/workspace_bg.css"]
 doctype_js = {
     "Purchase Receipt": "public/js/purchase_receipt.js",
  "Stock Entry": "public/js/stock_entry.js",

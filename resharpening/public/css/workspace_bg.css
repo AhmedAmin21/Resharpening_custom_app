@@ -1,0 +1,81 @@
+/* =========================================================
+   ERPNext Custom Desk Background Pattern
+   ========================================================= */
+
+/* Base dotted pattern applied to the desk layout below navbar */
+html,
+body,
+#body,
+.page-container {
+    background-color: #f6f7f9 !important;
+    background-image: 
+        radial-gradient(#d3d8df 1.25px, transparent 1.25px),
+        radial-gradient(#d3d8df 1.25px, #f6f7f9 1.25px) !important;
+    background-size: 24px 24px !important;
+    background-position: 0 0, 12px 12px !important;
+    background-attachment: fixed !important;
+}
+
+/* Ensure top dark navbar retains its design and is unaffected */
+header,
+header .navbar,
+.navbar {
+    background-image: none !important;
+}
+
+/* Allow pattern to flow through layout containers, page headers, sidebar, and workspace main section */
+.page-wrapper,
+.page-container,
+.page-content,
+.page-body,
+.page-head,
+.workspace-page,
+.layout-main,
+.layout-side-section,
+.layout-main-section-wrapper,
+.desk-sidebar,
+.list-sidebar,
+.standard-sidebar,
+#page-Workspaces .layout-main-section,
+.workspace-page .layout-main-section,
+body[data-route^="workspace"] .layout-main-section,
+body[data-route^="Workspaces"] .layout-main-section {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+/* Remove outer bounding box from the main workspace container so it blends seamlessly */
+#page-Workspaces .layout-main-section,
+.workspace-page .layout-main-section,
+body[data-route^="workspace"] .layout-main-section,
+body[data-route^="Workspaces"] .layout-main-section {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Maintain solid white backgrounds, borders, and shadows for all individual content cards and widgets */
+.widget,
+.widget.desk-widget,
+.widget-group .widget,
+.links-widget-box,
+.shortcut-widget-box,
+.number-widget-box,
+.onboarding-widget-box,
+.dashboard-widget-box,
+.quick-list-widget-box,
+.custom-block-widget-box,
+.chart-widget-box,
+.frappe-card:not(.layout-main-section),
+.form-page,
+.std-form-layout > .form-layout > .form-page {
+    background-color: #ffffff !important;
+    background-image: none !important;
+}
+
+/* Ensure desk dialogs, modals, dropdowns, and overlays remain fully opaque */
+.modal-content,
+.msgprint-dialog,
+.dropdown-menu,
+.popover {
+    background-image: none !important;
+}
