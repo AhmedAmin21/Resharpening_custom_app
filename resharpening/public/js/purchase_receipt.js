@@ -1,5 +1,40 @@
+function setup_resharpening_item_query(frm) {
+    frm.set_query("item_code", "items", function () {
+        let filters;
+        if (frm.doc.is_subcontracted) {
+            filters = { supplier: frm.doc.supplier };
+            if (frm.doc.is_old_subcontracting_flow) {
+                filters["is_sub_contracted_item"] = 1;
+            } else {
+                filters["is_stock_item"] = 0;
+            }
+        } else {
+            filters = {
+                supplier: frm.doc.supplier,
+                is_purchase_item: 1,
+                has_variants: 0,
+            };
+        }
+
+        if (frm.doc.custom_operation_type === "Resharpening") {
+            filters["name"] = ["like", "%res%"];
+        }
+
+        return {
+            query: "erpnext.controllers.queries.item_query",
+            filters: filters,
+        };
+    });
+}
+
 frappe.ui.form.on("Purchase Receipt", {
+    onload_post_render(frm) {
+        setup_resharpening_item_query(frm);
+    },
+
     refresh(frm) {
+        setup_resharpening_item_query(frm);
+
         // Only show for submitted Resharpening Purchase Receipts
         if (
             frm.doc.docstatus === 1 &&
@@ -52,6 +87,10 @@ frappe.ui.form.on("Purchase Receipt", {
                 __("Create")
             );
         }
+    },
+
+    custom_operation_type(frm) {
+        setup_resharpening_item_query(frm);
     },
 
     return_against(frm) {
